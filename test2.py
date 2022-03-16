@@ -1,212 +1,155 @@
+from dis import dis
+from turtle import position
+from unicodedata import name
 import nvisii
-import random
+import time
+import numpy as np
 
-opt = lambda : None
-opt.spp = 1000
-opt.width = 500
-opt.height = 500 
-opt.out = "05_lights.png"
+opt = lambda: None
+opt.nb_objects = 2
+opt.spp = 128
+opt.width = 400
+opt.height = 400
+opt.out = "05_load_obj_file.png"
 
 # # # # # # # # # # # # # # # # # # # # # # # # #
-nvisii.initialize(headless=True, verbose=True)
-
+nvisii.initialize()
+nvisii.resize_window(int(opt.width), int(opt.height))
 nvisii.enable_denoiser()
 
 camera = nvisii.entity.create(
-    name = "camera",
-    transform = nvisii.transform.create("camera"),
-    camera = nvisii.camera.create(
-        name = "camera", 
-        aspect = float(opt.width)/float(opt.height)
+    name="camera",
+    transform=nvisii.transform.create("camera"),
+    camera=nvisii.camera.create(
+        name="camera",
+        aspect=float(opt.width) / float(opt.height)
     )
 )
 
-camera.get_transform().look_at(
-    at = (0,0,.5),
-    up = (0,0,1),
-    eye = (-2,-2,1.5),
-)
 nvisii.set_camera_entity(camera)
-
-# # # # # # # # # # # # # # # # # # # # # # # # #
-
-# lets turn off the ambiant lights 
 nvisii.set_dome_light_intensity(0)
 nvisii.disable_dome_light_sampling()
 
-# add a light to an entity
-obj_entity = nvisii.entity.create(
-    name="light_1",
-    mesh = nvisii.mesh.create_sphere('light_1'),
-    transform = nvisii.transform.create("light_1"),
+sun = nvisii.entity.create(
+    name="sun",
+    light=nvisii.light.create('sun'),
+    # mesh = nvisii.mesh.create_sphere('sun', radius=696_340),
+    transform=nvisii.transform.create(
+        name='sun',
+        position=(14_960_000_000, 0, 0)
+    )
 )
 
-# a light is an entity with a light added to it. 
-obj_entity.set_light(
-    nvisii.light.create('light_1')
-)
-obj_entity.get_light().set_intensity(1)
-obj_entity.get_light().set_temperature(8000)
+sun.get_light().set_intensity(10 ** 5)
+sun.get_light().set_exposure(50)
+sun.get_light().set_temperature(8000)
 
-#lets set the size and placement of the light
-obj_entity.get_transform().set_scale((0.2, 0.2, 0.2))
-
-#light above the scene
-obj_entity.get_transform().set_position((0,0,1.5))
-
-# Second light 
-obj_entity = nvisii.entity.create(
-    name="light_2",
-    mesh = nvisii.mesh.create_teapotahedron('light_2'),
-    transform = nvisii.transform.create("light_2"),
-)
-# a light is an entity with a light added to it. 
-obj_entity.set_light(
-    nvisii.light.create('light_2')
-)
-obj_entity.get_light().set_intensity(2)
-
-# you can also set the light color manually
-obj_entity.get_light().set_color((1.,.0,.0))
-
-#lets set the size and placement of the light
-obj_entity.get_transform().set_scale((0.1, 0.1, 0.1))
-obj_entity.get_transform().set_position((0.2,-0.7,0.10))
-obj_entity.get_transform().set_rotation(nvisii.angleAxis(90, (0,0,1)))
-
-# third light 
-obj_entity = nvisii.entity.create(
-    name="light_3",
-    mesh = nvisii.mesh.create_plane('light_3', flip_z = True),
-    transform = nvisii.transform.create("light_3"),
-)
-obj_entity.set_light(
-    nvisii.light.create('light_3')
-)
-# Intensity effects the appearance of the light in 
-# addition to what intensity that light emits.
-obj_entity.get_light().set_intensity(1)
-
-# Exposure does not effect direct appearance of the light,
-# but does effect the relative power of the light in illuminating
-# other objects.
-obj_entity.get_light().set_exposure(4)
-
-# Light power can also be controlled by surface area (with larger lights emitting more) 
-# This has more impact for larger area lights, but is off by default to make lights easier
-# to control.
-# obj_entity.get_light().use_surface_area(True)
-
-obj_entity.get_light().set_color((0,.5,1))
-obj_entity.get_transform().set_scale((0.2, 0.2, 0.2))
-obj_entity.get_transform().look_at(
-    at = (-1,-1,0),
-    up = (0,0,1),
-    eye = (-0.5,0.5,1.0)
-)
 
 # # # # # # # # # # # # # # # # # # # # # # # # #
+# This function loads a signle obj mesh. It ignores
+# the associated .mtl file
+def import_calipso():
+    sdb = nvisii.import_scene(
+        file_path='./objects/calipso.obj',
+        position=(0, 0, 0),
+        args=["verbose"]
+    )
 
-# Lets set some objects in the scene
+    # # # # # # # # # # # # # # # # # # # # # # # # #
+    size = 0
+    S = None
+    import numpy as np
+    S = sdb.entities[0]
+    S.get_transform().set_angle_axis(
+        90 / 180 * np.pi, (1, 0, 0)
+    )
 
-# Create a box that'll act like a room for the objects
-room = nvisii.entity.create(
-    name="room",
-    mesh = nvisii.mesh.create_box('room'),
-    transform = nvisii.transform.create("room"),
-    material = nvisii.material.create("room"),
+    max_values = [0, 0, 0]
+    min_values = [np.inf, np.inf, np.inf]
+    for i_s, s in enumerate(sdb.entities):
+        mc = s.get_max_aabb_corner()
+        nc = s.get_min_aabb_corner()
+
+        max_values = [max(v, u) for v, u in zip(max_values, mc)]
+        min_values = [min(v, u) for v, u in zip(min_values, nc)]
+
+    size = max(np.array(max_values) - np.array(min_values))
+
+    return S, size
+
+
+def import_atlas():
+    mesh = nvisii.mesh.create_from_file("glb", "./objects/Atlas_V_stage2.glb")
+
+    obj_entity = nvisii.entity.create(
+        name="obj_entity",
+        mesh=mesh,
+        transform=nvisii.transform.create("obj_entity"),
+        material=nvisii.material.create("obj_entity")
+    )
+
+    S = obj_entity
+    mc = S.get_max_aabb_corner()
+    nc = S.get_min_aabb_corner()
+    size = max(mc - nc)
+
+    return S, size
+
+
+S, size = import_calipso()
+
+camera.get_transform().look_at(
+    at=(0, 0, 0),
+    up=(0, 0, 1),
+    eye=(0, 1, 0),
 )
-room.get_transform().set_scale((2,2,2))
-room.get_transform().set_position((0,0,2))
-mat = nvisii.material.get("room")
-mat.set_base_color(nvisii.vec3(0.19,0.16,0.19)) 
-mat.set_roughness(1)
 
-sphere = nvisii.entity.create(
-    name="sphere",
-    mesh = nvisii.mesh.create_sphere("sphere"),
-    transform = nvisii.transform.create("sphere"),
-    material = nvisii.material.create("sphere")
-)
-sphere.get_transform().set_position(
-    nvisii.vec3(0.4,0,0.2))
-sphere.get_transform().set_scale(
-    nvisii.vec3(0.2))
-sphere.get_material().set_base_color(
-    nvisii.vec3(0.1,0.96,0.4))  
-sphere.get_material().set_roughness(0.7)   
-sphere.get_material().set_specular(1)   
+# 0.01
+S.get_transform().set_angle_axis(0 / 180 * np.pi, (1, 0, 0))
 
-sphere2 = nvisii.entity.create(
-    name="sphere2",
-    mesh = nvisii.mesh.create_sphere("sphere2"),
-    transform = nvisii.transform.create("sphere2"),
-    material = nvisii.material.create("sphere2")
-)
-sphere2.get_transform().set_position(
-    nvisii.vec3(-0.5,-0.1,0.1))
-sphere2.get_transform().set_scale(
-    nvisii.vec3(0.1))
-sphere2.get_material().set_base_color(
-    nvisii.vec3(0.1,0.56,1))  
-sphere2.get_material().set_roughness(0)   
-sphere2.get_material().set_specular(0)   
+print(size)
 
-disk = nvisii.entity.create(
-    name="disk",
-    mesh = nvisii.mesh.create_capped_cylinder("disk"),
-    transform = nvisii.transform.create("disk"),
-    material = nvisii.material.create("disk")
-)
-disk.get_transform().set_scale((.4,.4,.01))
-disk.get_transform().set_position((0.2,-0.7,0.01))
-disk.get_material().set_roughness(0)
-disk.get_material().set_metallic(1)
-disk.get_material().set_base_color((1,1,1))
+x = 0
+y = 1
 
-cone = nvisii.entity.create(
-    name="cone",
-    mesh = nvisii.mesh.create_cone("cone"),
-    transform = nvisii.transform.create("cone"),
-    material = nvisii.material.create("cone")
-)
-# lets set the cone up
-cone.get_transform().set_position(
-    nvisii.vec3(0.08,0.35,0.2))
-cone.get_transform().set_scale(
-    nvisii.vec3(0.3))
-cone.get_material().set_base_color(
-    nvisii.vec3(245/255, 230/255, 66/255))  
-cone.get_material().set_roughness(1)   
-cone.get_material().set_specular(0)   
-cone.get_material().set_metallic(0)   
+S.get_transform().add_angle_axis(10 / 180 * np.pi, (0, 0, 1))
 
-box1 = nvisii.entity.create(
-    name="box1",
-    mesh = nvisii.mesh.create_box("box1"),
-    transform = nvisii.transform.create("box1"),
-    material = nvisii.material.create("box1")
-)
-# lets set the box1 up
-box1.get_transform().set_position(
-    nvisii.vec3(-0.5,0.4,0.2))
-box1.get_transform().set_scale(
-    nvisii.vec3(0.2))
-box1.get_material().set_base_color(
-    nvisii.vec3(1,1,1))  
-box1.get_material().set_roughness(0)   
-box1.get_material().set_specular(0)   
-box1.get_material().set_metallic(1)   
+w = 100
+for i in range(10):
+    x -= 2
+    y += 0.5
 
-#%%
-# # # # # # # # # # # # # # # # # # # # # # # # #
+    # S.get_transform().add_angle_axis(10 / 180 * np.pi, (0,0,1))
+    S.get_transform().set_position((0, 200, 0))
+
+    p1 = S.get_transform().get_position()
+    p2 = camera.get_transform().get_position()
+    p1 = np.array(list(p1))
+    p2 = np.array(list(p2))
+    dist = np.sum((p1 - p2) ** 2) ** 0.5
+
+    print(p1, p2)
+
+    magnification = w / (size * 2 * 1000)
+
+    focus = (dist / ((1 / magnification) + 1)) * 1000
+
+    print(dist, size, focus, magnification)
+
+    camera.get_transform().look_at(
+        at=S.get_transform().get_position(),
+        up=(0, 0, 1),
+        eye=(0, 0, 0), previous=False
+    )
+    camera.get_camera().set_focal_length(focus, w, w)
+    time.sleep(0.5)
 
 nvisii.render_to_file(
-    width=opt.width, 
-    height=opt.height, 
+    width=opt.width,
+    height=opt.height,
     samples_per_pixel=opt.spp,
-    file_path=opt.out
+    file_path="calipso_dist_200_000.png"
 )
 
-# let's clean up the GPU
+# let's clean up GPU resources
 nvisii.deinitialize()
